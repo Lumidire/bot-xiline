@@ -4,7 +4,7 @@ import os
 import discord
 from discord.ext import commands
 from discord import app_commands
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 
 # --- SERVIDOR WEB PARA EVITAR QUE RENDER APAGUE EL BOT ---
 app = Flask('')
@@ -134,8 +134,7 @@ async def ayuda_command(ctx):
     imagen="URL opcional de una imagen o banner para el embed"
 )
 async def anuncio(ctx, mensaje: str, imagen: str = None):
-    if ctx.interaction:
-        await ctx.interaction.response.defer(ephemeral=True)
+    is_slash = ctx.interaction is not None
 
     mencion_global = ""
     if "@everyone" in mensaje:
@@ -153,22 +152,13 @@ async def anuncio(ctx, mensaje: str, imagen: str = None):
 
     allowed_menciones = discord.AllowedMentions(everyone=True, roles=True, users=True)
 
-    if not ctx.interaction:
-        try:
-            await ctx.message.delete()
-        except:
-            pass
-
+    if is_slash:
+        await ctx.interaction.response.send_message("✅ Anuncio enviado con éxito.", ephemeral=True)
+    
     if mencion_global:
-        await ctx.send(content=mencion_global, embed=embed, allowed_mentions=allowed_menciones)
+        await ctx.channel.send(content=mencion_global, embed=embed, allowed_mentions=allowed_menciones)
     else:
-        await ctx.send(embed=embed)
-
-    if ctx.interaction:
-        try:
-            await ctx.interaction.delete_original_response()
-        except:
-            pass
+        await ctx.channel.send(embed=embed)
 
     await enviar_log_embed(
         ctx.guild,
@@ -185,10 +175,6 @@ async def anuncio(ctx, mensaje: str, imagen: str = None):
 # ==========================================
 # 2. SISTEMA DE SANCIONES Y WARNS
 # ==========================================
-
-from datetime import datetime, timezone, timedelta
-
-# ... (resto de tus imports y código base) ...
 
 @bot.hybrid_command(name="sancion", description="Aplica el sistema inteligente de sanciones.")
 @app_commands.describe(usuario="El miembro a sancionar", horas_opcional="Horas de timeout opcionales (ej: 2)")
@@ -508,46 +494,3 @@ TOKEN = os.getenv('DISCORD_TOKEN')
 if __name__ == "__main__":
     keep_alive()
     bot.run(TOKEN)
-
-@bot.hybrid_command(name="anuncio", description="Envía un anuncio oficial en embed limpio con mención global real.")
-@app_commands.describe(
-    mensaje="El contenido del anuncio oficial",
-    imagen="URL opcional de una imagen o banner para el embed"
-)
-async def anuncio(ctx, mensaje: str, imagen: str = None):
-    is_slash = ctx.interaction is not None
-
-    mencion_global = ""
-    if "@everyone" in mensaje:
-        mencion_global = "@everyone"
-    elif "@here" in mensaje:
-        mencion_global = "@here"
-
-    embed = discord.Embed(
-        title="📢 ¡Aviso Oficial de Los Muertos FC!",
-        description=mensaje,
-        color=discord.Color.gold()
-    )
-    if imagen:
-        embed.set_image(url=imagen)
-
-    allowed_menciones = discord.AllowedMentions(everyone=True, roles=True, users=True)
-
-    if is_slash:
-        await ctx.interaction.response.send_message("✅ Anuncio enviado con éxito.", ephemeral=True)
-    
-    if mencion_global:
-        await ctx.channel.send(content=mencion_global, embed=embed, allowed_mentions=allowed_menciones)
-    else:
-        await ctx.channel.send(embed=embed)
-
-    await enviar_log_embed(
-        ctx.guild,
-        "Anuncio Oficial Enviado",
-        "Se ha emitido un comunicado oficial en Los Muertos FC.",
-        discord.Color.gold(),
-        [
-            ("Moderador", ctx.author.mention, True),
-            ("Canal", ctx.channel.mention, True)
-        ]
-    )
