@@ -28,11 +28,15 @@ class BotXiline(commands.Bot):
 
 bot = BotXiline()
 
-# --- SISTEMA DE LOGS UNIVERSAL EN EMBED ---
+# --- SISTEMA DE LOGS UNIVERSAL Y EXCLUSIVO EN EMBED ---
 async def enviar_log_embed(guild, titulo, descripcion, color, campos=None):
     canal = guild.get_channel(CANAL_LOGS_ID)
     if not canal:
-        return
+        try:
+            canal = await guild.fetch_channel(CANAL_LOGS_ID)
+        except Exception as e:
+            print(f"No se pudo obtener el canal de logs: {e}")
+            return
 
     embed = discord.Embed(
         title=f"📋 [LOG] {titulo}",
@@ -56,9 +60,13 @@ async def enviar_log_embed(guild, titulo, descripcion, color, campos=None):
 async def on_ready():
     print(f'¡Conectado exitosamente como {bot.user}!')
 
-# Manejador de errores unificado para evitar mensajes duplicados
+# --- MANEJADOR DE ERRORES ÚNICO Y ANTIDUPLICADOS ---
 @bot.event
 async def on_command_error(ctx, error):
+    if hasattr(ctx, 'handled') and ctx.handled:
+        return
+    ctx.handled = True
+
     if isinstance(error, commands.CommandNotFound):
         embed = discord.Embed(
             title="❌ Comando Inválido",
@@ -66,7 +74,7 @@ async def on_command_error(ctx, error):
             color=discord.Color.red()
         )
         await ctx.send(embed=embed, delete_after=10)
-    elif isinstance(error, commands.MissingRequiredArgument) or isinstance(error, commands.BadArgument):
+    elif isinstance(error, (commands.MissingRequiredArgument, commands.BadArgument)):
         embed = discord.Embed(
             title="⚠️ Faltan Datos o Argumentos",
             description="Te faltó incluir información obligatoria o algún usuario/dato es incorrecto para este comando.",
