@@ -45,8 +45,8 @@ async def on_ready():
 # 1. UTILIDAD Y COMUNIDAD
 # ==========================================
 
-@bot.hybrid_command(name="help", description="Muestra la lista de comandos disponibles.")
-async def help_command(ctx):
+@bot.hybrid_command(name="ayuda", description="Muestra la lista de comandos disponibles.")
+async def ayuda_command(ctx):
     embed = discord.Embed(
         title="🤖 Menú de Ayuda - Bot Xiline (Los Muertos FC)",
         description="Aquí tienes la lista de comandos disponibles para moderación, comunidad y torneos de FC Mobile.",
