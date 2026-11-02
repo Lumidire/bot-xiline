@@ -2,6 +2,7 @@ import os
 import discord
 from discord.ext import commands
 from discord import app_commands
+from datetime import datetime
 
 # IDs configurados de tu servidor
 ROL_LIGA_ID = 1566864268979085432
@@ -27,18 +28,35 @@ class BotXiline(commands.Bot):
 
 bot = BotXiline()
 
-async def enviar_log(guild, mensaje):
+# --- SISTEMA DE LOGS UNIVERSAL EN EMBED ---
+async def enviar_log_embed(guild, titulo, descripcion, color, campos=None):
     canal = guild.get_channel(CANAL_LOGS_ID)
-    if canal:
-        try:
-            await canal.send(f"📋 **[LOG]** {mensaje}")
-        except Exception as e:
-            print(f"Error al enviar log: {e}")
+    if not canal:
+        return
+
+    embed = discord.Embed(
+        title=f"📋 [LOG] {titulo}",
+        description=descripcion,
+        color=color,
+        timestamp=datetime.utcnow()
+    )
+
+    if campos:
+        for nombre, valor, en_linea in campos:
+            embed.add_field(name=nombre, value=valor, inline=en_linea)
+
+    embed.set_footer(text=f"Servidor: {guild.name}")
+
+    try:
+        await canal.send(embed=embed)
+    except Exception as e:
+        print(f"Error al enviar log en embed: {e}")
 
 @bot.event
 async def on_ready():
     print(f'¡Conectado exitosamente como {bot.user}!')
 
+# Manejador de errores unificado para evitar mensajes duplicados
 @bot.event
 async def on_command_error(ctx, error):
     if isinstance(error, commands.CommandNotFound):
@@ -48,10 +66,10 @@ async def on_command_error(ctx, error):
             color=discord.Color.red()
         )
         await ctx.send(embed=embed, delete_after=10)
-    elif isinstance(error, commands.MissingRequiredArgument):
+    elif isinstance(error, commands.MissingRequiredArgument) or isinstance(error, commands.BadArgument):
         embed = discord.Embed(
-            title="⚠️ Faltan Datos",
-            description="Te faltó incluir algunos argumentos obligatorios para este comando.",
+            title="⚠️ Faltan Datos o Argumentos",
+            description="Te faltó incluir información obligatoria o algún usuario/dato es incorrecto para este comando.",
             color=discord.Color.orange()
         )
         await ctx.send(embed=embed, delete_after=10)
@@ -64,6 +82,9 @@ async def on_command_error(ctx, error):
 
 @bot.hybrid_command(name="ayuda", description="Muestra la lista de comandos disponibles.")
 async def ayuda_command(ctx):
+    if ctx.interaction:
+        await ctx.interaction.response.send_message("Menú de ayuda abierto.", ephemeral=True)
+
     embed = discord.Embed(
         title="🤖 Menú de Ayuda - Bot Xiline (Los Muertos FC)",
         description="Aquí tienes la lista oficial de comandos organizada para la administración de la comunidad y torneos.",
@@ -75,7 +96,7 @@ async def ayuda_command(ctx):
     embed.add_field(name="🏆 Torneo FC Mobile", value="`/crear-inscripcion [cupos]` - Crea el panel de inscripción con botones (4, 8, 16, 32).", inline=False)
     
     if ctx.interaction:
-        await ctx.interaction.response.send_message(embed=embed, ephemeral=True)
+        await ctx.channel.send(embed=embed)
     else:
         await ctx.send(embed=embed)
 
@@ -85,7 +106,9 @@ async def ayuda_command(ctx):
     imagen="URL opcional de una imagen o banner para el embed"
 )
 async def anuncio(ctx, mensaje: str, imagen: str = None):
-    # Procesar menciones globales de manera segura
+    if ctx.interaction:
+        await ctx.interaction.response.send_message("Anuncio enviado correctamente.", ephemeral=True)
+
     mencion_global = ""
     if "@everyone" in mensaje:
         mencion_global = "@everyone"
@@ -97,34 +120,44 @@ async def anuncio(ctx, mensaje: str, imagen: str = None):
         description=mensaje,
         color=discord.Color.gold()
     )
-    
     if imagen:
         embed.set_image(url=imagen)
 
     allowed_menciones = discord.AllowedMentions(everyone=True, roles=True, users=True)
 
-    # Si se usa con barra (/anuncio), respondemos de forma oculta y enviamos el anuncio al canal
-    if ctx.interaction:
-        await ctx.interaction.response.send_message("Anuncio enviado correctamente.", ephemeral=True)
-        await ctx.channel.send(content=mencion_global if mencion_global else None, embed=embed, allowed_mentions=allowed_menciones)
-    else:
-        # Si se usa con prefijo (!anuncio), borramos el mensaje original y enviamos el embed
+    if not ctx.interaction:
         try:
             await ctx.message.delete()
         except:
             pass
-        await ctx.send(content=mencion_global if mencion_global else None, embed=embed, allowed_mentions=allowed_menciones)
 
-    await enviar_log(ctx.guild, f"Se envió un anuncio oficial en la comunidad.")
+    if mencion_global:
+        await ctx.send(content=mencion_global, embed=embed, allowed_mentions=allowed_menciones)
+    else:
+        await ctx.send(embed=embed)
+
+    await enviar_log_embed(
+        ctx.guild,
+        "Anuncio Oficial Enviado",
+        "Se ha emitido un comunicado oficial en la comunidad.",
+        discord.Color.gold(),
+        [
+            ("Moderador", ctx.author.mention, True),
+            ("Canal", ctx.channel.mention, True)
+        ]
+    )
 
 
 # ==========================================
-# 2. SISTEMA DE SANCIóNES Y WARNS
+# 2. SISTEMA DE SANCIONES Y WARNS
 # ==========================================
 
 @bot.hybrid_command(name="warn", description="Registra una advertencia formal a un usuario.")
 @app_commands.describe(usuario="El miembro a sancionar", razon="Motivo de la advertencia")
 async def warn(ctx, usuario: discord.Member, *, razon: str):
+    if ctx.interaction:
+        await ctx.interaction.response.send_message("Advertencia procesada.", ephemeral=True)
+
     user_id = usuario.id
     if user_id not in historial_warns:
         historial_warns[user_id] = []
@@ -137,22 +170,43 @@ async def warn(ctx, usuario: discord.Member, *, razon: str):
     embed.add_field(name="Total Warns", value=str(total_warns), inline=True)
     embed.add_field(name="Razón", value=razon, inline=False)
     
-    await ctx.send(embed=embed)
-    await enviar_log(ctx.guild, f"A {usuario.mention} se le registró un warn (Total: {total_warns}). Razón: {razon}")
+    await ctx.channel.send(embed=embed) if ctx.interaction else await ctx.send(embed=embed)
+
+    await enviar_log_embed(
+        ctx.guild,
+        "Advertencia (Warn) Registrada",
+        f"Se le ha emitido un warn a {usuario.mention}.",
+        discord.Color.orange(),
+        [
+            ("Moderador", ctx.author.mention, True),
+            ("Usuario Afectado", usuario.mention, True),
+            ("Total de Warns", str(total_warns), True),
+            ("Razón", razon, False)
+        ]
+    )
 
     if total_warns >= 3:
         horas_mute = 6 
         delta_tiempo = discord.utils.utcnow() + discord.timedelta(hours=horas_mute)
         try:
             await usuario.timeout(delta_tiempo, reason="Acumulación de 3 advertencias (Warns)")
-            await ctx.send(f"🚨 **{usuario.mention}** alcanzó 3 warns y recibió un mute automático de **{horas_mute} horas**.")
-            await enviar_log(ctx.guild, f"{usuario.mention} recibió mute automático de {horas_mute}h por 3 warns.")
+            await ctx.channel.send(f"🚨 **{usuario.mention}** alcanzó 3 warns y recibió un mute automático de **{horas_mute} horas**.")
+            await enviar_log_embed(
+                ctx.guild,
+                "Mute Automático por 3 Warns",
+                f"El usuario {usuario.mention} recibió un aislamiento temporal por acumular 3 advertencias.",
+                discord.Color.red(),
+                [("Usuario", usuario.mention, True), ("Duración", f"{horas_mute} horas", True)]
+            )
         except Exception as e:
-            await ctx.send(f"No se pudo aplicar el timeout: {e}")
+            print(f"No se pudo aplicar el timeout: {e}")
 
 @bot.hybrid_command(name="sancion", description="Aplica el sistema inteligente de sanciones.")
 @app_commands.describe(usuario="El miembro a sancionar", horas_opcional="Horas de timeout opcionales (por defecto 2h)")
 async def sancion(ctx, usuario: discord.Member, horas_opcional: int = 2):
+    if ctx.interaction:
+        await ctx.interaction.response.send_message("Sanción procesada.", ephemeral=True)
+
     user_id = usuario.id
     if user_id not in historial_sanciones:
         historial_sanciones[user_id] = 0
@@ -164,16 +218,23 @@ async def sancion(ctx, usuario: discord.Member, horas_opcional: int = 2):
 
     if nivel == 1:
         embed = discord.Embed(title="📌 1ra Sanción Registrada", description=f"A {usuario.mention} se le ha registrado su primera sanción formal.", color=discord.Color.yellow())
-        await ctx.send(embed=embed)
-        await enviar_log(guild, f"Se registró la 1ra sanción a {usuario.mention}.")
+        await ctx.channel.send(embed=embed) if ctx.interaction else await ctx.send(embed=embed)
+        await enviar_log_embed(
+            guild, "1ra Sanción Registrada", f"Se registró la primera sanción a {usuario.mention}.", discord.Color.yellow(),
+            [("Moderador", ctx.author.mention, True), ("Usuario", usuario.mention, True), ("Nivel", "1", True)]
+        )
     elif nivel == 2:
         delta_tiempo = discord.utils.utcnow() + discord.timedelta(hours=horas_opcional)
         try:
             await usuario.timeout(delta_tiempo, reason=f"2da Sanción ({horas_opcional} horas)")
-            await ctx.send(f"⏳ **{usuario.mention}** recibió su **2da Sanción**: Timeout de **{horas_opcional} horas**.")
-            await enviar_log(guild, f"2da Sanción a {usuario.mention}: Timeout de {horas_opcional}h.")
+            msg = f"⏳ **{usuario.mention}** recibió su **2da Sanción**: Timeout de **{horas_opcional} horas**."
+            await ctx.channel.send(msg) if ctx.interaction else await ctx.send(msg)
+            await enviar_log_embed(
+                guild, "2da Sanción Aplicada (Timeout)", f"Se aplicó un timeout de {horas_opcional} horas a {usuario.mention}.", discord.Color.orange(),
+                [("Moderador", ctx.author.mention, True), ("Usuario", usuario.mention, True), ("Duración", f"{horas_opcional} horas", True)]
+            )
         except Exception as e:
-            await ctx.send(f"Error al aplicar timeout: {e}")
+            print(f"Error: {e}")
     elif nivel >= 3:
         es_miembro_liga = rol_liga in usuario.roles if rol_liga else False
         delta_tiempo = discord.utils.utcnow() + discord.timedelta(hours=horas_opcional)
@@ -181,17 +242,25 @@ async def sancion(ctx, usuario: discord.Member, horas_opcional: int = 2):
             try:
                 await usuario.remove_roles(rol_liga, reason="3ra Sanción - Retiro de rol de liga")
                 await usuario.timeout(delta_tiempo, reason="3ra Sanción miembro de liga")
-                await ctx.send(f"🛑 **{usuario.mention}** (Miembro de Liga) acumuló su **3ra Sanción**: Se le retiró el rol de la liga y recibió timeout de {horas_opcional}h.")
-                await enviar_log(guild, f"3ra Sanción miembro de liga {usuario.mention}: Rol retirado y timeout de {horas_opcional}h.")
+                msg = f"🛑 **{usuario.mention}** (Miembro de Liga) acumuló su **3ra Sanción**: Se le retiró el rol de la liga y recibió timeout de {horas_opcional}h."
+                await ctx.channel.send(msg) if ctx.interaction else await ctx.send(msg)
+                await enviar_log_embed(
+                    guild, "3ra Sanción - Miembro de Liga", f"Se retiró el rol oficial de la liga a {usuario.mention} y se aplicó timeout.", discord.Color.red(),
+                    [("Moderador", ctx.author.mention, True), ("Usuario", usuario.mention, True), ("Acción", "Retiro de Rol de Liga + Timeout", False)]
+                )
             except Exception as e:
-                await ctx.send(f"Error: {e}")
+                print(f"Error: {e}")
         else:
             try:
                 await usuario.kick(reason="3ra Sanción - Comunidad general")
-                await ctx.send(f"👢 **{usuario.mention}** (Comunidad general) acumuló su **3ra Sanción** y fue expulsado (*kick*).")
-                await enviar_log(guild, f"3ra Sanción usuario general {usuario.mention}: Expulsado.")
+                msg = f"👢 **{usuario.mention}** (Comunidad general) acumuló su **3ra Sanción** y fue expulsado (*kick*)."
+                await ctx.channel.send(msg) if ctx.interaction else await ctx.send(msg)
+                await enviar_log_embed(
+                    guild, "3ra Sanción - Miembro General (Kick)", f"El usuario {usuario.mention} fue expulsado del servidor por acumular 3 sanciones.", discord.Color.red(),
+                    [("Moderador", ctx.author.mention, True), ("Usuario", usuario.mention, True), ("Acción", "Expulsión (Kick)", False)]
+                )
             except Exception as e:
-                await ctx.send(f"Error: {e}")
+                print(f"Error: {e}")
 
 @bot.hybrid_command(name="ver-sanciones", description="Muestra el historial de un usuario.")
 async def ver_sanciones(ctx, usuario: discord.Member):
@@ -219,31 +288,47 @@ async def ver_sanciones(ctx, usuario: discord.Member):
 
 @bot.hybrid_command(name="vetar", description="Vetar a un usuario de los torneos de liga.")
 async def vetar(ctx, usuario: discord.Member, *, razon: str = "Infracción en torneos"):
+    if ctx.interaction:
+        await ctx.interaction.response.send_message("Veto procesado.", ephemeral=True)
+
     guild = ctx.guild
     rol_vetado = guild.get_role(ROL_VETADO_ID)
     if not rol_vetado:
-        await ctx.send("El rol de vetado no existe en el servidor.", ephemeral=True)
+        msg = "El rol de vetado no existe en el servidor."
+        await ctx.channel.send(msg) if ctx.interaction else await ctx.send(msg)
         return
     try:
         await usuario.add_roles(rol_vetado, reason=razon)
-        await ctx.send(f"🚫 **{usuario.mention}** ha sido **vetado** de los torneos. Razón: {razon}")
-        await enviar_log(guild, f"{usuario.mention} fue VETADO. Razón: {razon}")
+        msg = f"🚫 **{usuario.mention}** ha sido **vetado** de los torneos. Razón: {razon}"
+        await ctx.channel.send(msg) if ctx.interaction else await ctx.send(msg)
+        await enviar_log_embed(
+            guild, "Usuario Vetado de Torneos", f"Se le ha impuesto el rol de vetado a {usuario.mention}.", discord.Color.dark_red(),
+            [("Moderador", ctx.author.mention, True), ("Usuario", usuario.mention, True), ("Razón", razon, False)]
+        )
     except Exception as e:
-        await ctx.send(f"Error: {e}")
+        print(f"Error: {e}")
 
 @bot.hybrid_command(name="desvetar", description="Remover el veto a un usuario.")
 async def desvetar(ctx, usuario: discord.Member):
+    if ctx.interaction:
+        await ctx.interaction.response.send_message("Desveto procesado.", ephemeral=True)
+
     guild = ctx.guild
     rol_vetado = guild.get_role(ROL_VETADO_ID)
     if not rol_vetado:
-        await ctx.send("El rol de vetado no existe en el servidor.", ephemeral=True)
+        msg = "El rol de vetado no existe en el servidor."
+        await ctx.channel.send(msg) if ctx.interaction else await ctx.send(msg)
         return
     try:
         await usuario.remove_roles(rol_vetado, reason="Remoción de veto")
-        await ctx.send(f"✅ **{usuario.mention}** ya no está vetado.")
-        await enviar_log(guild, f"A {usuario.mention} se le removió el veto.")
+        msg = f"✅ **{usuario.mention}** ya no está vetado."
+        await ctx.channel.send(msg) if ctx.interaction else await ctx.send(msg)
+        await enviar_log_embed(
+            guild, "Veto Removido", f"Se le ha retirado el veto a {usuario.mention}.", discord.Color.green(),
+            [("Moderador", ctx.author.mention, True), ("Usuario", usuario.mention, True)]
+        )
     except Exception as e:
-        await ctx.send(f"Error: {e}")
+        print(f"Error: {e}")
 
 
 # ==========================================
@@ -251,9 +336,10 @@ async def desvetar(ctx, usuario: discord.Member):
 # ==========================================
 
 class VistaInscripcionTorneo(discord.ui.View):
-    def __init__(self, cupos_maximos: int):
+    def __init__(self, cupos_maximos: int, guild: discord.Guild):
         super().__init__(timeout=None)
         self.cupos_maximos = cupos_maximos
+        self.guild = guild
         self.inscritos = []
         self.suplentes = []
 
@@ -278,8 +364,7 @@ class VistaInscripcionTorneo(discord.ui.View):
     @discord.ui.button(label="Inscribirse", style=discord.ButtonStyle.success, custom_id="btn_inscribir_torneo")
     async def inscribirse(self, interaction: discord.Interaction, button: discord.ui.Button):
         user = interaction.user
-        guild = interaction.guild
-        rol_vetado = guild.get_role(ROL_VETADO_ID)
+        rol_vetado = self.guild.get_role(ROL_VETADO_ID)
 
         if rol_vetado and rol_vetado in user.roles:
             await interaction.response.send_message("❌ Estás **vetado** y no puedes inscribirte.", ephemeral=True)
@@ -292,32 +377,50 @@ class VistaInscripcionTorneo(discord.ui.View):
         if len(self.inscritos) < self.cupos_maximos:
             self.inscritos.append(user)
             await interaction.response.send_message("✅ ¡Inscrito como **Titular**!", ephemeral=True)
-            await enviar_log(guild, f"{user.mention} se inscribió como **Titular**.")
+            await enviar_log_embed(
+                self.guild, "Inscripción a Torneo (Titular)", f"{user.mention} se ha inscrito formalmente como **Titular**.", discord.Color.blue(),
+                [("Participante", user.mention, True), ("Estado", "Titular Principal", True), ("Total Titulares", f"{len(self.inscritos)}/{self.cupos_maximos}", True)]
+            )
         else:
             self.suplentes.append(user)
             await interaction.response.send_message("⚠️ Cupos llenos. Has entrado a la **Fila de Suplentes**.", ephemeral=True)
-            await enviar_log(guild, f"{user.mention} entró a la **Fila de Suplentes**.")
+            await enviar_log_embed(
+                self.guild, "Inscripción a Torneo (Suplente)", f"{user.mention} entró a la **Fila de Suplentes** por cupos llenos.", discord.Color.gold(),
+                [("Participante", user.mention, True), ("Estado", "Fila de Espera", True), ("Total Suplentes", str(len(self.suplentes)), True)]
+            )
 
         await interaction.message.edit(embed=self.actualizar_embed(), view=self)
 
     @discord.ui.button(label="Desinscribirse", style=discord.ButtonStyle.danger, custom_id="btn_desinscribir_torneo")
     async def desinscribirse(self, interaction: discord.Interaction, button: discord.ui.Button):
         user = interaction.user
-        guild = interaction.guild
 
         if user in self.inscritos:
             self.inscritos.remove(user)
+            movido_texto = "Ninguno"
             if self.suplentes:
                 nuevo_titular = self.suplentes.pop(0)
                 self.inscritos.append(nuevo_titular)
-                await enviar_log(guild, f"Se movió a {nuevo_titular.mention} de suplentes a **Titular**.")
+                movido_texto = nuevo_titular.mention
+                await enviar_log_embed(
+                    self.guild, "Ascenso Automático desde Suplentes", f"{nuevo_titular.mention} ha subido automáticamente de suplente a **Titular**.", discord.Color.purple(),
+                    [("Nuevo Titular", nuevo_titular.mention, False)]
+                )
+            
             await interaction.response.send_message("✅ Te has desinscrito correctamente.", ephemeral=True)
-            await enviar_log(guild, f"{user.mention} se desinscribió del torneo.")
+            await enviar_log_embed(
+                self.guild, "Desinscripción de Torneo", f"{user.mention} se ha desinscrito del torneo.", discord.Color.dark_orange(),
+                [("Participante", user.mention, True), ("Ascendido desde suplentes", movido_texto, False)]
+            )
             await interaction.message.edit(embed=self.actualizar_embed(), view=self)
+
         elif user in self.suplentes:
             self.suplentes.remove(user)
             await interaction.response.send_message("✅ Has salido de los suplentes.", ephemeral=True)
-            await enviar_log(guild, f"{user.mention} salió de los suplentes.")
+            await enviar_log_embed(
+                self.guild, "Salida de Fila de Suplentes", f"{user.mention} ha salido de la lista de suplentes.", discord.Color.dark_gray(),
+                [("Participante", user.mention, True)]
+            )
             await interaction.message.edit(embed=self.actualizar_embed(), view=self)
         else:
             await interaction.response.send_message("⚠️ No estabas inscrito.", ephemeral=True)
@@ -331,13 +434,18 @@ class VistaInscripcionTorneo(discord.ui.View):
     app_commands.Choice(name="32 Jugadores", value=32),
 ])
 async def crear_inscripcion(ctx, cupos: int):
-    vista = VistaInscripcionTorneo(cupos_maximos=cupos)
+    if ctx.interaction:
+        await ctx.interaction.response.send_message("Panel de inscripción creado.", ephemeral=True)
+
+    vista = VistaInscripcionTorneo(cupos_maximos=cupos, guild=ctx.guild)
     embed = vista.actualizar_embed()
     
-    await ctx.send(embed=embed, view=vista)
-    if ctx.interaction:
-        await ctx.interaction.response.send_message("Panel creado con éxito.", ephemeral=True)
-    await enviar_log(ctx.guild, f"{ctx.author.mention} creó un panel de inscripción de {cupos} cupos.")
+    await ctx.channel.send(embed=embed, view=vista) if ctx.interaction else await ctx.send(embed=embed, view=vista)
+    
+    await enviar_log_embed(
+        ctx.guild, "Panel de Torneo Creado", f"Se ha abierto un panel de inscripción para el torneo de FC Mobile.", discord.Color.teal(),
+        [("Creador", ctx.author.mention, True), ("Cupos Principales", str(cupos), True)]
+    )
 
 TOKEN = os.getenv('DISCORD_TOKEN')
 bot.run(TOKEN)
