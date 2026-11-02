@@ -28,7 +28,7 @@ class BotXiline(commands.Bot):
 
 bot = BotXiline()
 
-# --- SISTEMA DE LOGS UNIVERSAL Y EXCLUSIVO EN EMBED ---
+# --- SISTEMA DE LOGS LIMPIO (LOGS | TÍTULO) ---
 async def enviar_log_embed(guild, titulo, descripcion, color, campos=None):
     canal = guild.get_channel(CANAL_LOGS_ID)
     if not canal:
@@ -39,7 +39,7 @@ async def enviar_log_embed(guild, titulo, descripcion, color, campos=None):
             return
 
     embed = discord.Embed(
-        title=f"📋 [LOG] {titulo}",
+        title=f"📋 LOGS | {titulo}",
         description=descripcion,
         color=color,
         timestamp=datetime.utcnow()
@@ -91,20 +91,24 @@ async def on_command_error(ctx, error):
 @bot.hybrid_command(name="ayuda", description="Muestra la lista de comandos disponibles.")
 async def ayuda_command(ctx):
     if ctx.interaction:
-        await ctx.interaction.response.send_message("Menú de ayuda abierto.", ephemeral=True)
+        await ctx.interaction.response.defer(ephemeral=True)
 
     embed = discord.Embed(
         title="🤖 Menú de Ayuda - Bot Xiline (Los Muertos FC)",
-        description="Aquí tienes la lista oficial de comandos organizada para la administración de la comunidad y torneos.",
+        description="Aquí tienes la lista oficial de comandos organizada para la administración de Los Muertos FC.",
         color=discord.Color.blue()
     )
     embed.add_field(name="📢 Comunidad", value="`!anuncio [mensaje]` / `/anuncio` - Envía un anuncio oficial.", inline=False)
     embed.add_field(name="⚖️ Moderación y Sanciones", value="`!warn` / `/warn` - Registra advertencias.\n`!sancion` / `/sancion` - Sanción inteligente por niveles.\n`!ver-sanciones` - Revisa el historial de un usuario.", inline=False)
     embed.add_field(name="🚫 Sistema de Vetos", value="`!vetar` / `/vetar` - Prohíbe la inscripción a torneos.\n`!desvetar` / `/desvetar` - Remueve el veto.", inline=False)
-    embed.add_field(name="🏆 Torneo FC Mobile", value="`/crear-inscripcion [cupos]` - Crea el panel de inscripción con botones (4, 8, 16, 32).", inline=False)
+    embed.add_field(name="🏆 Torneo Los Muertos FC", value="`/crear-inscripcion [cupos]` - Crea el panel de inscripción con botones (4, 8, 16, 32).", inline=False)
     
     if ctx.interaction:
         await ctx.channel.send(embed=embed)
+        try:
+            await ctx.interaction.delete_original_response()
+        except:
+            pass
     else:
         await ctx.send(embed=embed)
 
@@ -115,7 +119,7 @@ async def ayuda_command(ctx):
 )
 async def anuncio(ctx, mensaje: str, imagen: str = None):
     if ctx.interaction:
-        await ctx.interaction.response.send_message("Anuncio enviado correctamente.", ephemeral=True)
+        await ctx.interaction.response.defer(ephemeral=True)
 
     mencion_global = ""
     if "@everyone" in mensaje:
@@ -124,7 +128,7 @@ async def anuncio(ctx, mensaje: str, imagen: str = None):
         mencion_global = "@here"
 
     embed = discord.Embed(
-        title="📢 ¡Aviso Oficial de la Comunidad!",
+        title="📢 ¡Aviso Oficial de Los Muertos FC!",
         description=mensaje,
         color=discord.Color.gold()
     )
@@ -144,10 +148,16 @@ async def anuncio(ctx, mensaje: str, imagen: str = None):
     else:
         await ctx.send(embed=embed)
 
+    if ctx.interaction:
+        try:
+            await ctx.interaction.delete_original_response()
+        except:
+            pass
+
     await enviar_log_embed(
         ctx.guild,
         "Anuncio Oficial Enviado",
-        "Se ha emitido un comunicado oficial en la comunidad.",
+        "Se ha emitido un comunicado oficial en Los Muertos FC.",
         discord.Color.gold(),
         [
             ("Moderador", ctx.author.mention, True),
@@ -164,7 +174,7 @@ async def anuncio(ctx, mensaje: str, imagen: str = None):
 @app_commands.describe(usuario="El miembro a sancionar", razon="Motivo de la advertencia")
 async def warn(ctx, usuario: discord.Member, *, razon: str):
     if ctx.interaction:
-        await ctx.interaction.response.send_message("Advertencia procesada.", ephemeral=True)
+        await ctx.interaction.response.defer(ephemeral=True)
 
     user_id = usuario.id
     if user_id not in historial_warns:
@@ -178,7 +188,14 @@ async def warn(ctx, usuario: discord.Member, *, razon: str):
     embed.add_field(name="Total Warns", value=str(total_warns), inline=True)
     embed.add_field(name="Razón", value=razon, inline=False)
     
-    await ctx.channel.send(embed=embed) if ctx.interaction else await ctx.send(embed=embed)
+    if ctx.interaction:
+        await ctx.channel.send(embed=embed)
+        try:
+            await ctx.interaction.delete_original_response()
+        except:
+            pass
+    else:
+        await ctx.send(embed=embed)
 
     await enviar_log_embed(
         ctx.guild,
@@ -213,7 +230,7 @@ async def warn(ctx, usuario: discord.Member, *, razon: str):
 @app_commands.describe(usuario="El miembro a sancionar", horas_opcional="Horas de timeout opcionales (por defecto 2h)")
 async def sancion(ctx, usuario: discord.Member, horas_opcional: int = 2):
     if ctx.interaction:
-        await ctx.interaction.response.send_message("Sanción procesada.", ephemeral=True)
+        await ctx.interaction.response.defer(ephemeral=True)
 
     user_id = usuario.id
     if user_id not in historial_sanciones:
@@ -226,7 +243,14 @@ async def sancion(ctx, usuario: discord.Member, horas_opcional: int = 2):
 
     if nivel == 1:
         embed = discord.Embed(title="📌 1ra Sanción Registrada", description=f"A {usuario.mention} se le ha registrado su primera sanción formal.", color=discord.Color.yellow())
-        await ctx.channel.send(embed=embed) if ctx.interaction else await ctx.send(embed=embed)
+        if ctx.interaction:
+            await ctx.channel.send(embed=embed)
+            try:
+                await ctx.interaction.delete_original_response()
+            except:
+                pass
+        else:
+            await ctx.send(embed=embed)
         await enviar_log_embed(
             guild, "1ra Sanción Registrada", f"Se registró la primera sanción a {usuario.mention}.", discord.Color.yellow(),
             [("Moderador", ctx.author.mention, True), ("Usuario", usuario.mention, True), ("Nivel", "1", True)]
@@ -236,7 +260,14 @@ async def sancion(ctx, usuario: discord.Member, horas_opcional: int = 2):
         try:
             await usuario.timeout(delta_tiempo, reason=f"2da Sanción ({horas_opcional} horas)")
             msg = f"⏳ **{usuario.mention}** recibió su **2da Sanción**: Timeout de **{horas_opcional} horas**."
-            await ctx.channel.send(msg) if ctx.interaction else await ctx.send(msg)
+            if ctx.interaction:
+                await ctx.channel.send(msg)
+                try:
+                    await ctx.interaction.delete_original_response()
+                except:
+                    pass
+            else:
+                await ctx.send(msg)
             await enviar_log_embed(
                 guild, "2da Sanción Aplicada (Timeout)", f"Se aplicó un timeout de {horas_opcional} horas a {usuario.mention}.", discord.Color.orange(),
                 [("Moderador", ctx.author.mention, True), ("Usuario", usuario.mention, True), ("Duración", f"{horas_opcional} horas", True)]
@@ -250,8 +281,15 @@ async def sancion(ctx, usuario: discord.Member, horas_opcional: int = 2):
             try:
                 await usuario.remove_roles(rol_liga, reason="3ra Sanción - Retiro de rol de liga")
                 await usuario.timeout(delta_tiempo, reason="3ra Sanción miembro de liga")
-                msg = f"🛑 **{usuario.mention}** (Miembro de Liga) acumuló su **3ra Sanción**: Se le retiró el rol de la liga y recibió timeout de {horas_opcional}h."
-                await ctx.channel.send(msg) if ctx.interaction else await ctx.send(msg)
+                msg = f"🛑 **{usuario.mention}** (Miembro de Los Muertos FC) acumuló su **3ra Sanción**: Se le retiró el rol de la liga y recibió timeout de {horas_opcional}h."
+                if ctx.interaction:
+                    await ctx.channel.send(msg)
+                    try:
+                        await ctx.interaction.delete_original_response()
+                    except:
+                        pass
+                else:
+                    await ctx.send(msg)
                 await enviar_log_embed(
                     guild, "3ra Sanción - Miembro de Liga", f"Se retiró el rol oficial de la liga a {usuario.mention} y se aplicó timeout.", discord.Color.red(),
                     [("Moderador", ctx.author.mention, True), ("Usuario", usuario.mention, True), ("Acción", "Retiro de Rol de Liga + Timeout", False)]
@@ -262,7 +300,14 @@ async def sancion(ctx, usuario: discord.Member, horas_opcional: int = 2):
             try:
                 await usuario.kick(reason="3ra Sanción - Comunidad general")
                 msg = f"👢 **{usuario.mention}** (Comunidad general) acumuló su **3ra Sanción** y fue expulsado (*kick*)."
-                await ctx.channel.send(msg) if ctx.interaction else await ctx.send(msg)
+                if ctx.interaction:
+                    await ctx.channel.send(msg)
+                    try:
+                        await ctx.interaction.delete_original_response()
+                    except:
+                        pass
+                else:
+                    await ctx.send(msg)
                 await enviar_log_embed(
                     guild, "3ra Sanción - Miembro General (Kick)", f"El usuario {usuario.mention} fue expulsado del servidor por acumular 3 sanciones.", discord.Color.red(),
                     [("Moderador", ctx.author.mention, True), ("Usuario", usuario.mention, True), ("Acción", "Expulsión (Kick)", False)]
@@ -294,21 +339,35 @@ async def ver_sanciones(ctx, usuario: discord.Member):
 # 3. SISTEMA DE VETOS
 # ==========================================
 
-@bot.hybrid_command(name="vetar", description="Vetar a un usuario de los torneos de liga.")
+@bot.hybrid_command(name="vetar", description="Vetar a un usuario de los torneos de la liga.")
 async def vetar(ctx, usuario: discord.Member, *, razon: str = "Infracción en torneos"):
     if ctx.interaction:
-        await ctx.interaction.response.send_message("Veto procesado.", ephemeral=True)
+        await ctx.interaction.response.defer(ephemeral=True)
 
     guild = ctx.guild
     rol_vetado = guild.get_role(ROL_VETADO_ID)
     if not rol_vetado:
         msg = "El rol de vetado no existe en el servidor."
-        await ctx.channel.send(msg) if ctx.interaction else await ctx.send(msg)
+        if ctx.interaction:
+            await ctx.channel.send(msg)
+            try:
+                await ctx.interaction.delete_original_response()
+            except:
+                pass
+        else:
+            await ctx.send(msg)
         return
     try:
         await usuario.add_roles(rol_vetado, reason=razon)
-        msg = f"🚫 **{usuario.mention}** ha sido **vetado** de los torneos. Razón: {razon}"
-        await ctx.channel.send(msg) if ctx.interaction else await ctx.send(msg)
+        msg = f"🚫 **{usuario.mention}** ha sido **vetado** de los torneos de Los Muertos FC. Razón: {razon}"
+        if ctx.interaction:
+            await ctx.channel.send(msg)
+            try:
+                await ctx.interaction.delete_original_response()
+            except:
+                pass
+        else:
+            await ctx.send(msg)
         await enviar_log_embed(
             guild, "Usuario Vetado de Torneos", f"Se le ha impuesto el rol de vetado a {usuario.mention}.", discord.Color.dark_red(),
             [("Moderador", ctx.author.mention, True), ("Usuario", usuario.mention, True), ("Razón", razon, False)]
@@ -319,18 +378,32 @@ async def vetar(ctx, usuario: discord.Member, *, razon: str = "Infracción en to
 @bot.hybrid_command(name="desvetar", description="Remover el veto a un usuario.")
 async def desvetar(ctx, usuario: discord.Member):
     if ctx.interaction:
-        await ctx.interaction.response.send_message("Desveto procesado.", ephemeral=True)
+        await ctx.interaction.response.defer(ephemeral=True)
 
     guild = ctx.guild
     rol_vetado = guild.get_role(ROL_VETADO_ID)
     if not rol_vetado:
         msg = "El rol de vetado no existe en el servidor."
-        await ctx.channel.send(msg) if ctx.interaction else await ctx.send(msg)
+        if ctx.interaction:
+            await ctx.channel.send(msg)
+            try:
+                await ctx.interaction.delete_original_response()
+            except:
+                pass
+        else:
+            await ctx.send(msg)
         return
     try:
         await usuario.remove_roles(rol_vetado, reason="Remoción de veto")
-        msg = f"✅ **{usuario.mention}** ya no está vetado."
-        await ctx.channel.send(msg) if ctx.interaction else await ctx.send(msg)
+        msg = f"✅ **{usuario.mention}** ya no está vetado en Los Muertos FC."
+        if ctx.interaction:
+            await ctx.channel.send(msg)
+            try:
+                await ctx.interaction.delete_original_response()
+            except:
+                pass
+        else:
+            await ctx.send(msg)
         await enviar_log_embed(
             guild, "Veto Removido", f"Se le ha retirado el veto a {usuario.mention}.", discord.Color.green(),
             [("Moderador", ctx.author.mention, True), ("Usuario", usuario.mention, True)]
@@ -353,7 +426,7 @@ class VistaInscripcionTorneo(discord.ui.View):
 
     def actualizar_embed(self):
         embed = discord.Embed(
-            title="🏆 INSCRIPCIÓN ABIERTA - TORNEO DE LIGA FC MOBILE",
+            title="🏆 INSCRIPCIÓN ABIERTA - TORNEO LOS MUERTOS FC",
             description=(
                 f"Haz clic en el botón verde para asegurar tu cupo.\n"
                 f"• **Cupos Principales:** {len(self.inscritos)} / {self.cupos_maximos}\n"
@@ -375,7 +448,7 @@ class VistaInscripcionTorneo(discord.ui.View):
         rol_vetado = self.guild.get_role(ROL_VETADO_ID)
 
         if rol_vetado and rol_vetado in user.roles:
-            await interaction.response.send_message("❌ Estás **vetado** y no puedes inscribirte.", ephemeral=True)
+            await interaction.response.send_message("❌ Estás **vetado** y no puedes inscribirte en Los Muertos FC.", ephemeral=True)
             return
 
         if user in self.inscritos or user in self.suplentes:
@@ -384,7 +457,7 @@ class VistaInscripcionTorneo(discord.ui.View):
 
         if len(self.inscritos) < self.cupos_maximos:
             self.inscritos.append(user)
-            await interaction.response.send_message("✅ ¡Inscrito como **Titular**!", ephemeral=True)
+            await interaction.response.send_message("✅ ¡Inscrito como **Titular** en Los Muertos FC!", ephemeral=True)
             await enviar_log_embed(
                 self.guild, "Inscripción a Torneo (Titular)", f"{user.mention} se ha inscrito formalmente como **Titular**.", discord.Color.blue(),
                 [("Participante", user.mention, True), ("Estado", "Titular Principal", True), ("Total Titulares", f"{len(self.inscritos)}/{self.cupos_maximos}", True)]
@@ -443,15 +516,22 @@ class VistaInscripcionTorneo(discord.ui.View):
 ])
 async def crear_inscripcion(ctx, cupos: int):
     if ctx.interaction:
-        await ctx.interaction.response.send_message("Panel de inscripción creado.", ephemeral=True)
+        await ctx.interaction.response.defer(ephemeral=True)
 
     vista = VistaInscripcionTorneo(cupos_maximos=cupos, guild=ctx.guild)
     embed = vista.actualizar_embed()
     
-    await ctx.channel.send(embed=embed, view=vista) if ctx.interaction else await ctx.send(embed=embed, view=vista)
+    if ctx.interaction:
+        await ctx.channel.send(embed=embed, view=vista)
+        try:
+            await ctx.interaction.delete_original_response()
+        except:
+            pass
+    else:
+        await ctx.send(embed=embed, view=vista)
     
     await enviar_log_embed(
-        ctx.guild, "Panel de Torneo Creado", f"Se ha abierto un panel de inscripción para el torneo de FC Mobile.", discord.Color.teal(),
+        ctx.guild, "Panel de Torneo Creado", f"Se ha abierto un panel de inscripción para el torneo de Los Muertos FC.", discord.Color.teal(),
         [("Creador", ctx.author.mention, True), ("Cupos Principales", str(cupos), True)]
     )
 
