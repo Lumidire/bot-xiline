@@ -508,3 +508,46 @@ TOKEN = os.getenv('DISCORD_TOKEN')
 if __name__ == "__main__":
     keep_alive()
     bot.run(TOKEN)
+
+@bot.hybrid_command(name="anuncio", description="Envía un anuncio oficial en embed limpio con mención global real.")
+@app_commands.describe(
+    mensaje="El contenido del anuncio oficial",
+    imagen="URL opcional de una imagen o banner para el embed"
+)
+async def anuncio(ctx, mensaje: str, imagen: str = None):
+    is_slash = ctx.interaction is not None
+
+    mencion_global = ""
+    if "@everyone" in mensaje:
+        mencion_global = "@everyone"
+    elif "@here" in mensaje:
+        mencion_global = "@here"
+
+    embed = discord.Embed(
+        title="📢 ¡Aviso Oficial de Los Muertos FC!",
+        description=mensaje,
+        color=discord.Color.gold()
+    )
+    if imagen:
+        embed.set_image(url=imagen)
+
+    allowed_menciones = discord.AllowedMentions(everyone=True, roles=True, users=True)
+
+    if is_slash:
+        await ctx.interaction.response.send_message("✅ Anuncio enviado con éxito.", ephemeral=True)
+    
+    if mencion_global:
+        await ctx.channel.send(content=mencion_global, embed=embed, allowed_mentions=allowed_menciones)
+    else:
+        await ctx.channel.send(embed=embed)
+
+    await enviar_log_embed(
+        ctx.guild,
+        "Anuncio Oficial Enviado",
+        "Se ha emitido un comunicado oficial en Los Muertos FC.",
+        discord.Color.gold(),
+        [
+            ("Moderador", ctx.author.mention, True),
+            ("Canal", ctx.channel.mention, True)
+        ]
+    )
