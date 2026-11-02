@@ -186,6 +186,10 @@ async def anuncio(ctx, mensaje: str, imagen: str = None):
 # 2. SISTEMA DE SANCIONES Y WARNS
 # ==========================================
 
+from datetime import datetime, timezone, timedelta
+
+# ... (resto de tus imports y código base) ...
+
 @bot.hybrid_command(name="sancion", description="Aplica el sistema inteligente de sanciones.")
 @app_commands.describe(usuario="El miembro a sancionar", horas_opcional="Horas de timeout opcionales (ej: 2)")
 async def sancion(ctx, usuario: discord.Member, horas_opcional: str = "2"):
@@ -205,7 +209,6 @@ async def sancion(ctx, usuario: discord.Member, horas_opcional: str = "2"):
     if user_id not in historial_sanciones:
         historial_sanciones[user_id] = 0
     
-    # Incrementamos el nivel y lo mostramos en consola para depurar
     historial_sanciones[user_id] += 1
     nivel = historial_sanciones[user_id]
     print(f"DEBUG: Usuario {usuario.name} (ID: {user_id}) subió al Nivel de Sanción: {nivel}")
@@ -232,7 +235,7 @@ async def sancion(ctx, usuario: discord.Member, horas_opcional: str = "2"):
         )
 
     elif nivel == 2:
-        delta_tiempo = datetime.now(timezone.utc) + discord.timedelta(hours=horas)
+        delta_tiempo = datetime.now(timezone.utc) + timedelta(hours=horas)
         try:
             await usuario.timeout(delta_tiempo, reason=f"2da Sanción ({horas} horas)")
             msg = f"⏳ **{usuario.mention}** recibió su **2da Sanción (Nivel 2)**: Timeout de **{horas} horas**."
@@ -250,10 +253,15 @@ async def sancion(ctx, usuario: discord.Member, horas_opcional: str = "2"):
             )
         except Exception as e:
             print(f"Error al aplicar timeout en nivel 2: {e}")
-            await ctx.channel.send("❌ No se pudo aplicar el timeout (verifica que el bot tenga un rol superior al usuario).")
+            await ctx.channel.send("❌ No se pudo aplicar el timeout (verifica jerarquía de roles).")
+            if is_slash:
+                try:
+                    await ctx.interaction.followup.send("❌ Error al aplicar timeout.", ephemeral=True)
+                except:
+                    pass
 
     else: # Nivel 3 o superior
-        delta_tiempo = datetime.now(timezone.utc) + discord.timedelta(hours=horas)
+        delta_tiempo = datetime.now(timezone.utc) + timedelta(hours=horas)
         es_miembro_liga = rol_liga in usuario.roles if rol_liga else False
         
         if es_miembro_liga and rol_liga:
@@ -265,7 +273,7 @@ async def sancion(ctx, usuario: discord.Member, horas_opcional: str = "2"):
                 await ctx.channel.send(msg)
                 if is_slash:
                     try:
-                        await ctx.interaction.followup.send("✅ 3ra Sanción procesada (Rol retirado + Timeout).", ephemeral=True)
+                        await ctx.interaction.followup.send("✅ 3ra Sanción procesada.", ephemeral=True)
                     except:
                         pass
                 
@@ -283,7 +291,7 @@ async def sancion(ctx, usuario: discord.Member, horas_opcional: str = "2"):
                 await ctx.channel.send(msg)
                 if is_slash:
                     try:
-                        await ctx.interaction.followup.send("✅ Usuario expulsado por acumular 3 sanciones.", ephemeral=True)
+                        await ctx.interaction.followup.send("✅ Usuario expulsado.", ephemeral=True)
                     except:
                         pass
                 
