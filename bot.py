@@ -85,10 +85,7 @@ async def ayuda_command(ctx):
     imagen="URL opcional de una imagen o banner para el embed"
 )
 async def anuncio(ctx, mensaje: str, imagen: str = None):
-    # Si se usa con barra (/anuncio), respondemos de forma oculta al admin para que no salga "Lumi ha utilizado..."
-    if ctx.interaction:
-        await ctx.interaction.response.send_message("Anuncio enviado correctamente.", ephemeral=True)
-
+    # Procesar menciones globales de manera segura
     mencion_global = ""
     if "@everyone" in mensaje:
         mencion_global = "@everyone"
@@ -101,23 +98,22 @@ async def anuncio(ctx, mensaje: str, imagen: str = None):
         color=discord.Color.gold()
     )
     
-    # Si el usuario colocó un link de imagen opcional, lo agregamos al embed
     if imagen:
         embed.set_image(url=imagen)
 
     allowed_menciones = discord.AllowedMentions(everyone=True, roles=True, users=True)
 
-    # Si es comando de prefijo (!anuncio), borramos el mensaje original del usuario para que nadie vea que él lo escribió
-    if not ctx.interaction:
+    # Si se usa con barra (/anuncio), respondemos de forma oculta y enviamos el anuncio al canal
+    if ctx.interaction:
+        await ctx.interaction.response.send_message("Anuncio enviado correctamente.", ephemeral=True)
+        await ctx.channel.send(content=mencion_global if mencion_global else None, embed=embed, allowed_mentions=allowed_menciones)
+    else:
+        # Si se usa con prefijo (!anuncio), borramos el mensaje original y enviamos el embed
         try:
             await ctx.message.delete()
         except:
             pass
-
-    if mencion_global:
-        await ctx.send(content=mencion_global, embed=embed, allowed_mentions=allowed_menciones)
-    else:
-        await ctx.send(embed=embed)
+        await ctx.send(content=mencion_global if mencion_global else None, embed=embed, allowed_mentions=allowed_menciones)
 
     await enviar_log(ctx.guild, f"Se envió un anuncio oficial en la comunidad.")
 
