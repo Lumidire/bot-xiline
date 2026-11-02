@@ -187,19 +187,29 @@ async def anuncio(ctx, mensaje: str, imagen: str = None):
 # ==========================================
 
 @bot.hybrid_command(name="sancion", description="Aplica el sistema inteligente de sanciones.")
-@app_commands.describe(usuario="El miembro a sancionar", horas_opcional="Horas de timeout opcionales (por defecto 2h)")
-async def sancion(ctx, usuario: discord.Member, horas_opcional: int = 2):
+@app_commands.describe(usuario="El miembro a sancionar", horas_opcional="Horas de timeout opcionales (ej: 2)")
+async def sancion(ctx, usuario: discord.Member, horas_opcional: str = "2"):
     is_slash = ctx.interaction is not None
     
     if is_slash:
         await ctx.interaction.response.defer(ephemeral=True)
 
+    try:
+        horas = int(''.join(filter(str.isdigit, horas_opcional)))
+        if horas <= 0:
+            horas = 2
+    except:
+        horas = 2
+
     user_id = usuario.id
     if user_id not in historial_sanciones:
         historial_sanciones[user_id] = 0
     
+    # Incrementamos el nivel y lo mostramos en consola para depurar
     historial_sanciones[user_id] += 1
     nivel = historial_sanciones[user_id]
+    print(f"DEBUG: Usuario {usuario.name} (ID: {user_id}) subió al Nivel de Sanción: {nivel}")
+    
     guild = ctx.guild
     rol_liga = guild.get_role(ROL_LIGA_ID)
 
@@ -209,11 +219,10 @@ async def sancion(ctx, usuario: discord.Member, horas_opcional: int = 2):
             description=f"A {usuario.mention} se le ha registrado su primera sanción formal.", 
             color=discord.Color.yellow()
         )
-        
         await ctx.channel.send(embed=embed)
         if is_slash:
             try:
-                await ctx.interaction.followup.send("✅ Sanción nivel 1 registrada con éxito.", ephemeral=True)
+                await ctx.interaction.followup.send("✅ Sanción nivel 1 registrada.", ephemeral=True)
             except:
                 pass
                 
@@ -223,59 +232,53 @@ async def sancion(ctx, usuario: discord.Member, horas_opcional: int = 2):
         )
 
     elif nivel == 2:
-        delta_tiempo = datetime.now(timezone.utc) + discord.timedelta(hours=horas_opcional)
+        delta_tiempo = datetime.now(timezone.utc) + discord.timedelta(hours=horas)
         try:
-            await usuario.timeout(delta_tiempo, reason=f"2da Sanción ({horas_opcional} horas)")
-            msg = f"⏳ **{usuario.mention}** recibió su **2da Sanción**: Timeout de **{horas_opcional} horas**."
+            await usuario.timeout(delta_tiempo, reason=f"2da Sanción ({horas} horas)")
+            msg = f"⏳ **{usuario.mention}** recibió su **2da Sanción (Nivel 2)**: Timeout de **{horas} horas**."
             
             await ctx.channel.send(msg)
             if is_slash:
                 try:
-                    await ctx.interaction.followup.send(f"✅ Timeout de {horas_opcional}h aplicado correctamente.", ephemeral=True)
+                    await ctx.interaction.followup.send(f"✅ 2da Sanción aplicada (Timeout {horas}h).", ephemeral=True)
                 except:
                     pass
             
             await enviar_log_embed(
-                guild, "2da Sanción Aplicada (Timeout)", f"Se aplicó un timeout de {horas_opcional} horas a {usuario.mention}.", discord.Color.orange(),
-                [("Moderador", ctx.author.mention, True), ("Usuario", usuario.mention, True), ("Duración", f"{horas_opcional} horas", True)]
+                guild, "2da Sanción Aplicada (Timeout)", f"Se aplicó un timeout de {horas} horas a {usuario.mention}.", discord.Color.orange(),
+                [("Moderador", ctx.author.mention, True), ("Usuario", usuario.mention, True), ("Nivel", "2", True), ("Duración", f"{horas} horas", True)]
             )
         except Exception as e:
             print(f"Error al aplicar timeout en nivel 2: {e}")
-            error_msg = "❌ No se pudo aplicar el timeout (verifica que el bot tenga roles superiores al usuario)."
-            await ctx.channel.send(error_msg)
-            if is_slash:
-                try:
-                    await ctx.interaction.followup.send(error_msg, ephemeral=True)
-                except:
-                    pass
+            await ctx.channel.send("❌ No se pudo aplicar el timeout (verifica que el bot tenga un rol superior al usuario).")
 
-    elif nivel >= 3:
+    else: # Nivel 3 o superior
+        delta_tiempo = datetime.now(timezone.utc) + discord.timedelta(hours=horas)
         es_miembro_liga = rol_liga in usuario.roles if rol_liga else False
-        delta_tiempo = datetime.now(timezone.utc) + discord.timedelta(hours=horas_opcional)
         
         if es_miembro_liga and rol_liga:
             try:
                 await usuario.remove_roles(rol_liga, reason="3ra Sanción - Retiro de rol de liga")
                 await usuario.timeout(delta_tiempo, reason="3ra Sanción miembro de liga")
-                msg = f"🛑 **{usuario.mention}** (Miembro de Los Muertos FC) acumuló su **3ra Sanción**: Se le retiró el rol de la liga y recibió timeout de {horas_opcional}h."
+                msg = f"🛑 **{usuario.mention}** (Miembro de Los Muertos FC) acumuló su **3ra Sanción (Nivel {nivel})**: Se le retiró el rol de la liga y recibió timeout de {horas}h."
                 
                 await ctx.channel.send(msg)
                 if is_slash:
                     try:
-                        await ctx.interaction.followup.send("✅ 3ra sanción procesada (Rol retirado + Timeout).", ephemeral=True)
+                        await ctx.interaction.followup.send("✅ 3ra Sanción procesada (Rol retirado + Timeout).", ephemeral=True)
                     except:
                         pass
                 
                 await enviar_log_embed(
                     guild, "3ra Sanción - Miembro de Liga", f"Se retiró el rol oficial de la liga a {usuario.mention} y se aplicó timeout.", discord.Color.red(),
-                    [("Moderador", ctx.author.mention, True), ("Usuario", usuario.mention, True), ("Acción", "Retiro de Rol de Liga + Timeout", False)]
+                    [("Moderador", ctx.author.mention, True), ("Usuario", usuario.mention, True), ("Nivel", str(nivel), True), ("Acción", "Retiro de Rol + Timeout", False)]
                 )
             except Exception as e:
                 print(f"Error en nivel 3 (liga): {e}")
         else:
             try:
                 await usuario.kick(reason="3ra Sanción - Comunidad general")
-                msg = f"👢 **{usuario.mention}** (Comunidad general) acumuló su **3ra Sanción** y fue expulsado (*kick*)."
+                msg = f"👢 **{usuario.mention}** (Comunidad general) acumuló su **3ra Sanción (Nivel {nivel})** y fue expulsado (*kick*)."
                 
                 await ctx.channel.send(msg)
                 if is_slash:
@@ -286,10 +289,10 @@ async def sancion(ctx, usuario: discord.Member, horas_opcional: int = 2):
                 
                 await enviar_log_embed(
                     guild, "3ra Sanción - Miembro General (Kick)", f"El usuario {usuario.mention} fue expulsado del servidor por acumular 3 sanciones.", discord.Color.red(),
-                    [("Moderador", ctx.author.mention, True), ("Usuario", usuario.mention, True), ("Acción", "Expulsión (Kick)", False)]
+                    [("Moderador", ctx.author.mention, True), ("Usuario", usuario.mention, True), ("Nivel", str(nivel), True), ("Acción", "Expulsión (Kick)", False)]
                 )
             except Exception as e:
-                print(f"Error en nivel 3 (kick): {e}")
+                print(f"Error en kick nivel 3: {e}")
 
 
 # ==========================================
