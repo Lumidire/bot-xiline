@@ -186,6 +186,62 @@ async def anuncio(ctx, mensaje: str, imagen: str = None):
 # 2. SISTEMA DE SANCIONES Y WARNS
 # ==========================================
 
+@bot.hybrid_command(name="warn", description="Registra una advertencia formal a un usuario.")
+@app_commands.describe(usuario="El miembro a sancionar", razon="Motivo de la advertencia")
+async def warn(ctx, usuario: discord.Member, *, razon: str):
+    if ctx.interaction:
+        await ctx.interaction.response.defer(ephemeral=True)
+
+    user_id = usuario.id
+    if user_id not in historial_warns:
+        historial_warns[user_id] = []
+    
+    historial_warns[user_id].append(razon)
+    total_warns = len(historial_warns[user_id])
+
+    embed = discord.Embed(title="⚠️ Advertencia Registrada", color=discord.Color.orange())
+    embed.add_field(name="Usuario", value=usuario.mention, inline=True)
+    embed.add_field(name="Total Warns", value=str(total_warns), inline=True)
+    embed.add_field(name="Razón", value=razon, inline=False)
+    
+    if ctx.interaction:
+        await ctx.channel.send(embed=embed)
+        try:
+            await ctx.interaction.delete_original_response()
+        except:
+            pass
+    else:
+        await ctx.send(embed=embed)
+
+    await enviar_log_embed(
+        ctx.guild,
+        "Advertencia (Warn) Registrada",
+        f"Se le ha emitido un warn a {usuario.mention}.",
+        discord.Color.orange(),
+        [
+            ("Moderador", ctx.author.mention, True),
+            ("Usuario Afectado", usuario.mention, True),
+            ("Total de Warns", str(total_warns), True),
+            ("Razón", razon, False)
+        ]
+    )
+
+    if total_warns >= 3:
+        horas_mute = 6 
+        delta_tiempo = datetime.now(timezone.utc) + discord.timedelta(hours=horas_mute)
+        try:
+            await usuario.timeout(delta_tiempo, reason="Acumulación de 3 advertencias (Warns)")
+            await ctx.channel.send(f"🚨 **{usuario.mention}** alcanzó 3 warns y recibió un mute automático de **{horas_mute} horas**.")
+            await enviar_log_embed(
+                ctx.guild,
+                "Mute Automático por 3 Warns",
+                f"El usuario {usuario.mention} recibió un aislamiento temporal por acumular 3 advertencias.",
+                discord.Color.red(),
+                [("Usuario", usuario.mention, True), ("Duración", f"{horas_mute} horas", True)]
+            )
+        except Exception as e:
+            print(f"No se pudo aplicar el timeout: {e}")
+
 @bot.hybrid_command(name="sancion", description="Aplica el sistema inteligente de sanciones.")
 @app_commands.describe(usuario="El miembro a sancionar", horas_opcional="Horas de timeout opcionales (por defecto 2h)")
 async def sancion(ctx, usuario: discord.Member, horas_opcional: int = 2):
@@ -206,44 +262,34 @@ async def sancion(ctx, usuario: discord.Member, horas_opcional: int = 2):
         if ctx.interaction:
             await ctx.channel.send(embed=embed)
             try:
-                await ctx.interaction.followup.send("✅ Sanción nivel 1 aplicada.", ephemeral=True)
+                await ctx.interaction.delete_original_response()
             except:
                 pass
         else:
             await ctx.send(embed=embed)
-            
         await enviar_log_embed(
             guild, "1ra Sanción Registrada", f"Se registró la primera sanción a {usuario.mention}.", discord.Color.yellow(),
             [("Moderador", ctx.author.mention, True), ("Usuario", usuario.mention, True), ("Nivel", "1", True)]
         )
-        
     elif nivel == 2:
         delta_tiempo = datetime.now(timezone.utc) + discord.timedelta(hours=horas_opcional)
         try:
             await usuario.timeout(delta_tiempo, reason=f"2da Sanción ({horas_opcional} horas)")
             msg = f"⏳ **{usuario.mention}** recibió su **2da Sanción**: Timeout de **{horas_opcional} horas**."
-            
             if ctx.interaction:
                 await ctx.channel.send(msg)
                 try:
-                    await ctx.interaction.followup.send(f"✅ Timeout de {horas_opcional}h aplicado con éxito.", ephemeral=True)
+                    await ctx.interaction.delete_original_response()
                 except:
                     pass
             else:
                 await ctx.send(msg)
-                
             await enviar_log_embed(
                 guild, "2da Sanción Aplicada (Timeout)", f"Se aplicó un timeout de {horas_opcional} horas a {usuario.mention}.", discord.Color.orange(),
                 [("Moderador", ctx.author.mention, True), ("Usuario", usuario.mention, True), ("Duración", f"{horas_opcional} horas", True)]
             )
         except Exception as e:
             print(f"Error al aplicar timeout en nivel 2: {e}")
-            if ctx.interaction:
-                try:
-                    await ctx.interaction.followup.send("❌ Error: No se pudo aplicar el timeout (revisa jerarquía de roles del bot).", ephemeral=True)
-                except:
-                    pass
-
     elif nivel >= 3:
         es_miembro_liga = rol_liga in usuario.roles if rol_liga else False
         delta_tiempo = datetime.now(timezone.utc) + discord.timedelta(hours=horas_opcional)
@@ -252,16 +298,14 @@ async def sancion(ctx, usuario: discord.Member, horas_opcional: int = 2):
                 await usuario.remove_roles(rol_liga, reason="3ra Sanción - Retiro de rol de liga")
                 await usuario.timeout(delta_tiempo, reason="3ra Sanción miembro de liga")
                 msg = f"🛑 **{usuario.mention}** (Miembro de Los Muertos FC) acumuló su **3ra Sanción**: Se le retiró el rol de la liga y recibió timeout de {horas_opcional}h."
-                
                 if ctx.interaction:
                     await ctx.channel.send(msg)
                     try:
-                        await ctx.interaction.followup.send("✅ 3ra sanción procesada (Rol retirado + Timeout).", ephemeral=True)
+                        await ctx.interaction.delete_original_response()
                     except:
                         pass
                 else:
                     await ctx.send(msg)
-                    
                 await enviar_log_embed(
                     guild, "3ra Sanción - Miembro de Liga", f"Se retiró el rol oficial de la liga a {usuario.mention} y se aplicó timeout.", discord.Color.red(),
                     [("Moderador", ctx.author.mention, True), ("Usuario", usuario.mention, True), ("Acción", "Retiro de Rol de Liga + Timeout", False)]
@@ -272,23 +316,41 @@ async def sancion(ctx, usuario: discord.Member, horas_opcional: int = 2):
             try:
                 await usuario.kick(reason="3ra Sanción - Comunidad general")
                 msg = f"👢 **{usuario.mention}** (Comunidad general) acumuló su **3ra Sanción** y fue expulsado (*kick*)."
-                
                 if ctx.interaction:
                     await ctx.channel.send(msg)
                     try:
-                        await ctx.interaction.followup.send("✅ Usuario expulsado por acumular 3 sanciones.", ephemeral=True)
+                        await ctx.interaction.delete_original_response()
                     except:
                         pass
                 else:
                     await ctx.send(msg)
-                    
                 await enviar_log_embed(
                     guild, "3ra Sanción - Miembro General (Kick)", f"El usuario {usuario.mention} fue expulsado del servidor por acumular 3 sanciones.", discord.Color.red(),
                     [("Moderador", ctx.author.mention, True), ("Usuario", usuario.mention, True), ("Acción", "Expulsión (Kick)", False)]
                 )
             except Exception as e:
                 print(f"Error en nivel 3 (kick): {e}")
-                
+
+@bot.hybrid_command(name="ver-sanciones", description="Muestra el historial de un usuario.")
+async def ver_sanciones(ctx, usuario: discord.Member):
+    user_id = usuario.id
+    warns = historial_warns.get(user_id, [])
+    sanciones_nivel = historial_sanciones.get(user_id, 0)
+
+    embed = discord.Embed(title=f"📋 Historial: {usuario.display_name}", color=discord.Color.purple())
+    embed.add_field(name="Nivel de Sanción", value=f"Nivel {sanciones_nivel}", inline=False)
+    embed.add_field(name="Total de Warns", value=str(len(warns)), inline=False)
+    if warns:
+        embed.add_field(name="Detalle", value="\n".join([f"• {r}" for r in warns]), inline=False)
+    else:
+        embed.add_field(name="Detalle", value="Sin advertencias registradas.", inline=False)
+
+    if ctx.interaction:
+        await ctx.interaction.response.send_message(embed=embed, ephemeral=True)
+    else:
+        await ctx.send(embed=embed)
+
+
 # ==========================================
 # 3. SISTEMA DE VETOS
 # ==========================================
@@ -453,7 +515,7 @@ class VistaInscripcionTorneo(discord.ui.View):
             self.suplentes.remove(user)
             await interaction.response.send_message("✅ Has salido de los suplentes.", ephemeral=True)
             await enviar_log_embed(
-                self.guild, "Salida de Fila de Suplentes", f"{user.mention} ha salido de la lista de suplentes.", discord.Color.dark_gray(),
+                self.guild, "Salida de Fila de Suplentes", f"{user.mention} has salido de la lista de suplentes.", discord.Color.dark_gray(),
                 [("Participante", user.mention, True)]
             )
             await interaction.message.edit(embed=self.actualizar_embed(), view=self)
