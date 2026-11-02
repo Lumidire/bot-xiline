@@ -19,7 +19,6 @@ intents.members = True
 
 class BotXiline(commands.Bot):
     def __init__(self):
-        # Desactivamos el help por defecto para evitar conflictos y diseños feos
         super().__init__(command_prefix='!', intents=intents, help_command=None)
 
     async def setup_hook(self):
@@ -40,7 +39,6 @@ async def enviar_log(guild, mensaje):
 async def on_ready():
     print(f'¡Conectado exitosamente como {bot.user}!')
 
-# Manejador de errores para que todos los mensajes de error sean en Embed
 @bot.event
 async def on_command_error(ctx, error):
     if isinstance(error, commands.CommandNotFound):
@@ -81,9 +79,16 @@ async def ayuda_command(ctx):
     else:
         await ctx.send(embed=embed)
 
-@bot.hybrid_command(name="anuncio", description="Envía un anuncio oficial en embed con mención global real.")
-@app_commands.describe(mensaje="El contenido del anuncio oficial")
-async def anuncio(ctx, *, mensaje: str):
+@bot.hybrid_command(name="anuncio", description="Envía un anuncio oficial en embed limpio con mención global real.")
+@app_commands.describe(
+    mensaje="El contenido del anuncio oficial",
+    imagen="URL opcional de una imagen o banner para el embed"
+)
+async def anuncio(ctx, mensaje: str, imagen: str = None):
+    # Si se usa con barra (/anuncio), respondemos de forma oculta al admin para que no salga "Lumi ha utilizado..."
+    if ctx.interaction:
+        await ctx.interaction.response.send_message("Anuncio enviado correctamente.", ephemeral=True)
+
     mencion_global = ""
     if "@everyone" in mensaje:
         mencion_global = "@everyone"
@@ -95,20 +100,26 @@ async def anuncio(ctx, *, mensaje: str):
         description=mensaje,
         color=discord.Color.gold()
     )
-    embed.set_footer(text=f"Anuncio enviado por {ctx.author.name}", icon_url=ctx.author.display_avatar.url)
     
-    # Forzar el ping real usando allowed_mentions para que sí suene la notificación
+    # Si el usuario colocó un link de imagen opcional, lo agregamos al embed
+    if imagen:
+        embed.set_image(url=imagen)
+
     allowed_menciones = discord.AllowedMentions(everyone=True, roles=True, users=True)
+
+    # Si es comando de prefijo (!anuncio), borramos el mensaje original del usuario para que nadie vea que él lo escribió
+    if not ctx.interaction:
+        try:
+            await ctx.message.delete()
+        except:
+            pass
 
     if mencion_global:
         await ctx.send(content=mencion_global, embed=embed, allowed_mentions=allowed_menciones)
     else:
         await ctx.send(embed=embed)
-    
-    if ctx.interaction:
-        await ctx.interaction.response.send_message("Anuncio enviado con éxito.", ephemeral=True)
 
-    await enviar_log(ctx.guild, f"El moderador {ctx.author.mention} envió un anuncio oficial.")
+    await enviar_log(ctx.guild, f"Se envió un anuncio oficial en la comunidad.")
 
 
 # ==========================================
@@ -220,7 +231,7 @@ async def vetar(ctx, usuario: discord.Member, *, razon: str = "Infracción en to
     try:
         await usuario.add_roles(rol_vetado, reason=razon)
         await ctx.send(f"🚫 **{usuario.mention}** ha sido **vetado** de los torneos. Razón: {razon}")
-        await enviar_log(guild, f"{usuario.mention} fue VETADO por {ctx.author.mention}. Razón: {razon}")
+        await enviar_log(guild, f"{usuario.mention} fue VETADO. Razón: {razon}")
     except Exception as e:
         await ctx.send(f"Error: {e}")
 
@@ -234,7 +245,7 @@ async def desvetar(ctx, usuario: discord.Member):
     try:
         await usuario.remove_roles(rol_vetado, reason="Remoción de veto")
         await ctx.send(f"✅ **{usuario.mention}** ya no está vetado.")
-        await enviar_log(guild, f"A {usuario.mention} se le removió el veto por {ctx.author.mention}.")
+        await enviar_log(guild, f"A {usuario.mention} se le removió el veto.")
     except Exception as e:
         await ctx.send(f"Error: {e}")
 
