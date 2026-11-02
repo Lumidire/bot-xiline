@@ -2,7 +2,7 @@ import os
 import discord
 from discord.ext import commands
 from discord import app_commands
-from datetime import datetime
+from datetime import datetime, timezone
 
 # IDs configurados de tu servidor
 ROL_LIGA_ID = 1566864268979085432
@@ -42,7 +42,7 @@ async def enviar_log_embed(guild, titulo, descripcion, color, campos=None):
         title=f"📋 LOGS | {titulo}",
         description=descripcion,
         color=color,
-        timestamp=datetime.utcnow()
+        timestamp=datetime.now(timezone.utc)
     )
 
     if campos:
@@ -212,7 +212,7 @@ async def warn(ctx, usuario: discord.Member, *, razon: str):
 
     if total_warns >= 3:
         horas_mute = 6 
-        delta_tiempo = discord.utils.utcnow() + discord.timedelta(hours=horas_mute)
+        delta_tiempo = datetime.now(timezone.utc) + discord.timedelta(hours=horas_mute)
         try:
             await usuario.timeout(delta_tiempo, reason="Acumulación de 3 advertencias (Warns)")
             await ctx.channel.send(f"🚨 **{usuario.mention}** alcanzó 3 warns y recibió un mute automático de **{horas_mute} horas**.")
@@ -256,7 +256,7 @@ async def sancion(ctx, usuario: discord.Member, horas_opcional: int = 2):
             [("Moderador", ctx.author.mention, True), ("Usuario", usuario.mention, True), ("Nivel", "1", True)]
         )
     elif nivel == 2:
-        delta_tiempo = discord.utils.utcnow() + discord.timedelta(hours=horas_opcional)
+        delta_tiempo = datetime.now(timezone.utc) + discord.timedelta(hours=horas_opcional)
         try:
             await usuario.timeout(delta_tiempo, reason=f"2da Sanción ({horas_opcional} horas)")
             msg = f"⏳ **{usuario.mention}** recibió su **2da Sanción**: Timeout de **{horas_opcional} horas**."
@@ -276,7 +276,7 @@ async def sancion(ctx, usuario: discord.Member, horas_opcional: int = 2):
             print(f"Error: {e}")
     elif nivel >= 3:
         es_miembro_liga = rol_liga in usuario.roles if rol_liga else False
-        delta_tiempo = discord.utils.utcnow() + discord.timedelta(hours=horas_opcional)
+        delta_tiempo = datetime.now(timezone.utc) + discord.timedelta(hours=horas_opcional)
         if es_miembro_liga and rol_liga:
             try:
                 await usuario.remove_roles(rol_liga, reason="3ra Sanción - Retiro de rol de liga")
